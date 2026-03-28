@@ -13,7 +13,11 @@ function charCountLabel(chars: number | undefined) {
   return `${chars} chars`;
 }
 
-export default function ChapterSelector({ chapters, onConvert, disabled }: Props) {
+export default function ChapterSelector({
+  chapters,
+  onConvert,
+  disabled,
+}: Props) {
   // Default: select all non-skippable chapters with enough content
   const [selected, setSelected] = useState<Set<number>>(() => {
     const s = new Set<number>();
@@ -33,7 +37,7 @@ export default function ChapterSelector({ chapters, onConvert, disabled }: Props
   }, [chapters]);
 
   const eligibleCount = chapters.filter(
-    (ch, i) => !ch.isSkippable && (ch.charCount ?? 0) >= 100
+    (ch) => !ch.isSkippable && (ch.charCount ?? 0) >= 100,
   ).length;
   const allSelected = selected.size === eligibleCount;
 
@@ -108,7 +112,9 @@ export default function ChapterSelector({ chapters, onConvert, disabled }: Props
                   </span>
                   {(ch.isSkippable || isEmpty) && (
                     <span className="text-xs text-slate-400 italic">
-                      {ch.isSkippable ? "Table of contents — skipped" : "Empty — skipped"}
+                      {ch.isSkippable
+                        ? "Table of contents — skipped"
+                        : "Empty — skipped"}
                     </span>
                   )}
                 </span>
