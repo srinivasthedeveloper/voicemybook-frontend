@@ -9,6 +9,7 @@ interface Props {
   charCounts: (number | undefined)[];
   parallel: number;
   msPerChar: number;
+  activeChapter?: ChapterGen;
   onStart: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -16,11 +17,11 @@ interface Props {
   onStopAll: () => void;
 }
 
-const btn = "rounded-lg px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40";
+const btn = "min-h-10 rounded-lg px-3 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40";
 
 export default function GeneratorControls({
   chapters, queue, jobId, titles, charCounts, parallel, msPerChar,
-  onStart, onPause, onResume, onStop, onStopAll,
+  activeChapter, onStart, onPause, onResume, onStop, onStopAll,
 }: Props) {
   const has = (...states: ChapterGen["state"][]) => chapters.some((c) => states.includes(c.state));
   const generating = chapters.filter((c) => c.state === "generating");
@@ -34,18 +35,19 @@ export default function GeneratorControls({
   const allDoneSec = msPerChar > 0 ? Math.max(longest, (activeSec + queuedSec) / Math.max(1, parallel)) : null;
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Generator
-          {parallel > 1 && <span className="ml-2 font-normal normal-case text-slate-400">· {parallel} chapters at a time</span>}
-        </h3>
-        <span className="text-xs text-slate-500">
-          {generating.length === 0 && "Idle"}
-          {mine.length > 0 && ` ${mine.length} queued`}
-          {otherBooks > 0 && ` · ${otherBooks} from other books`}
-          {(generating.length > 0 || mine.length > 0) && allDoneSec != null && ` · all done ${formatEta(allDoneSec)}`}
-        </span>
+    <section aria-label="Generator" className="flex flex-col gap-3 rounded-2xl border border-slate-200 p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 className="text-base font-semibold text-slate-900">
+          {generating.length ? "Generating audio" : "Generator idle"}
+        </h2>
+        <p className="text-xs text-slate-500">
+          {[
+            parallel > 1 ? `${parallel} chapters at a time` : null,
+            mine.length ? `${mine.length} queued` : null,
+            otherBooks ? `${otherBooks} from other books` : null,
+            (generating.length || mine.length) && allDoneSec != null ? `all done ${formatEta(allDoneSec)}` : null,
+          ].filter(Boolean).join(", ")}
+        </p>
       </div>
 
       {generating.map((c) => {
@@ -71,18 +73,30 @@ export default function GeneratorControls({
       {generating.length > 0 && <p className="text-xs text-slate-400">Each chapter merges into one file when it finishes.</p>}
 
       <div className="flex flex-wrap gap-2">
-        <button onClick={onStart} className={`${btn} bg-indigo-600 text-white hover:bg-indigo-700`}>Start</button>
-        <button onClick={onPause} disabled={!has("generating", "queued")} className={`${btn} bg-slate-100 text-slate-700 hover:bg-slate-200`}>Pause</button>
-        <button onClick={onResume} disabled={!has("paused")} className={`${btn} bg-slate-100 text-slate-700 hover:bg-slate-200`}>Resume</button>
-        <button onClick={onStop} disabled={!has("generating", "queued", "paused")} className={`${btn} bg-red-50 text-red-700 hover:bg-red-100`}>Stop</button>
+        {activeChapter && activeChapter.state !== "generating" && activeChapter.state !== "queued" && (
+          <button
+            onClick={onStart}
+            title="Applies to the chapter that's open in the player"
+            className={`${btn} ${activeChapter.state === "ready"
+              ? "border border-slate-200 text-slate-800 hover:bg-slate-100"
+              : "bg-indigo-600 text-bg hover:opacity-90"}`}
+          >
+            {activeChapter.state === "paused" ? "Resume this chapter"
+              : activeChapter.state === "ready" ? "Regenerate this chapter"
+              : "Generate this chapter"}
+          </button>
+        )}
+        <button onClick={onPause} disabled={!has("generating", "queued")} className={`${btn} bg-slate-100 text-slate-800 hover:bg-slate-200`}>Pause</button>
+        <button onClick={onResume} disabled={!has("paused")} className={`${btn} bg-slate-100 text-slate-800 hover:bg-slate-200`}>Resume</button>
+        <button onClick={onStop} disabled={!has("generating", "queued", "paused")} className={`${btn} bg-danger-bg text-danger hover:opacity-80`}>Stop</button>
         <button
           onClick={onStopAll}
           title="Stop every running chapter and clear the queue for every book"
-          className={`${btn} ml-auto border border-red-200 text-red-700 hover:bg-red-50`}
+          className={`${btn} border border-slate-200 text-danger hover:bg-danger-bg sm:ml-auto`}
         >
-          Stop all / clear queue
+          Stop all books
         </button>
       </div>
-    </div>
+    </section>
   );
 }

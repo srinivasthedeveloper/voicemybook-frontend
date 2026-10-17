@@ -47,23 +47,26 @@ export default function TranscriptViewer({
   }
 
   const activeRef = useRef<HTMLSpanElement | null>(null);
+  const boxRef = useRef<HTMLDivElement | null>(null);
 
+  // Scroll only the transcript box (scrollIntoView would also move the page)
   useEffect(() => {
-    activeRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    const box = boxRef.current;
+    const el = activeRef.current;
+    if (!box || !el) return;
+    const top = el.offsetTop;
+    if (top < box.scrollTop || top > box.scrollTop + box.clientHeight - 40) {
+      box.scrollTo({ top: Math.max(0, top - box.clientHeight / 3), behavior: "smooth" });
+    }
   }, [active]);
 
   if (paragraphs.length === 0) return null;
 
   return (
-    <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-100 px-5 py-3">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Transcript
-        </h3>
-      </div>
-      <div className="max-h-64 overflow-y-auto px-4 py-3">
+    <div ref={boxRef} className="relative max-h-[60svh] overflow-y-auto px-4 py-4 sm:px-6 lg:max-h-[28rem]">
+      <div className="mx-auto max-w-prose">
         {paragraphs.map((lines, pi) => (
-          <p key={pi} className="mb-3 text-sm leading-relaxed text-slate-700">
+          <p key={pi} className="mb-4 font-read text-[1.05rem] leading-8 text-slate-800">
             {lines.map((line, li) => {
               const key = `${pi}:${li}`;
               return (
@@ -75,7 +78,7 @@ export default function TranscriptViewer({
                   onClick={() => onSeek(line.startSec)}
                   onKeyDown={(e) => { if (e.key === "Enter") onSeek(line.startSec); }}
                   className={`cursor-pointer rounded px-0.5 transition
-                    ${key === active ? "bg-indigo-100 font-medium text-indigo-900" : "hover:bg-slate-100"}`}
+                    ${key === active ? "bg-indigo-100 text-slate-900 underline decoration-indigo-500 decoration-2 underline-offset-4" : "hover:bg-slate-100"}`}
                 >
                   {line.text}{" "}
                 </span>

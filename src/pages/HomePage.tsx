@@ -13,6 +13,7 @@ import { useSSE } from "../hooks/useSSE";
 import useJobStore from "../store/useJobStore";
 import { getGeneratorState, startChapters } from "../api/client";
 import logo from "/public/logo.png";
+import ThemeToggle from "../components/ThemeToggle";
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -63,126 +64,98 @@ export default function HomePage() {
   const isAnalyzed = stage === "analyzed";
   const isProcessing = ["extracting", "tts", "stitching"].includes(stage) || converting;
 
+  const settings = (
+    <section aria-label="Voice and speed" className="flex flex-col gap-5 rounded-2xl border border-slate-200 p-4 sm:p-5">
+      <h2 className="text-base font-semibold text-slate-900">Voice &amp; speed</h2>
+      <SpeedSlider value={selectedSpeed} onChange={setSpeed} disabled={isUploading} />
+      <VoiceSelector value={selectedVoice} onChange={setVoice} disabled={isUploading} />
+      <VoiceTestBox />
+    </section>
+  );
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
-      <div className="mx-auto max-w-2xl px-4 py-12">
+    <div className="min-h-svh bg-bg text-slate-700">
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:py-12">
         {/* Header */}
-        <div className="mb-10 flex flex-col items-center text-center">
-          <img
-            src={logo}
-            alt="VoiceMyBook"
-            className="mb-4 h-16 w-16 rounded-2xl shadow-md"
-          />
-          <h1 className="text-4xl font-bold tracking-tight text-slate-900">
-            Voice My Book
-          </h1>
-          <p className="mt-2 text-lg text-slate-500">
-            Turn any PDF textbook into an audiobook — free, no signup required
-          </p>
-        </div>
-
-        {/* Errors */}
-        {error && (
-          <div className="mb-5">
-            <ErrorBanner message={error} onDismiss={() => setError(null)} />
+        <header className="mb-8 flex items-center gap-4 sm:mb-10">
+          <img src={logo} alt="" className="h-12 w-12 shrink-0 rounded-xl sm:h-14 sm:w-14" />
+          <div className="min-w-0 flex-1">
+            <h1 className="font-read text-3xl font-semibold leading-tight text-slate-900 sm:text-4xl">
+              Voice My Book
+            </h1>
+            <p className="mt-1 text-sm text-slate-500 sm:text-base">
+              Turn a PDF into an audiobook. Start listening while the rest is still being read aloud.
+            </p>
           </div>
-        )}
-        {job?.error && (
-          <div className="mb-5">
-            <ErrorBanner
-              message={job.error}
-              onDismiss={() => {
-                setActiveJobId(null);
-                useJobStore.setState({ currentJobId: null });
-              }}
-            />
-          </div>
-        )}
+          <ThemeToggle />
+        </header>
 
-        <div className="flex flex-col gap-5">
-          {/* Stage 1: Drop zone (before upload) */}
-          {!isUploading && !isUploaded && (
-            <>
-              <DropZone
-                onFile={(file) => { void handleFile(file); }}
-                disabled={isUploading}
+        <div className="flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(0,1fr)_26rem] lg:items-start lg:gap-8">
+          <div className="flex min-w-0 flex-col gap-5">
+            {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
+            {job?.error && (
+              <ErrorBanner
+                message={job.error}
+                onDismiss={() => {
+                  setActiveJobId(null);
+                  useJobStore.setState({ currentJobId: null });
+                }}
               />
-              {/* Voice + Speed (shown before upload) */}
-              <div className="flex gap-4 flex-col md:flex-row">
-                <div className="flex-1">
-                  <VoiceSelector value={selectedVoice} onChange={setVoice} disabled={isUploading} />
-                </div>
-                <div className="md:w-56">
-                  <SpeedSlider value={selectedSpeed} onChange={setSpeed} disabled={isUploading} />
-                </div>
+            )}
+
+            {/* Upload */}
+            {!isUploading && !isUploaded && (
+              <>
+                <DropZone onFile={(file) => { void handleFile(file); }} disabled={isUploading} />
+                <ol className="grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+                  {[
+                    "Upload a PDF (up to 50 MB). A book you've uploaded before opens instantly.",
+                    "Pick the chapters you want.",
+                    "Choose a voice and reading speed, and test them on any text.",
+                    "Listen while chapters are still being generated.",
+                  ].map((step, i) => (
+                    <li key={i} className="flex gap-3 rounded-xl border border-slate-200 p-3">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-semibold text-indigo-700">
+                        {i + 1}
+                      </span>
+                      <span>{step}</span>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            )}
+
+            {isUploading && <UploadProgress percent={uploadProgress} filename={job?.filename} />}
+
+            {isUploaded && (isAnalyzing || (stage === "pending" && !job?.analyzedChapters)) && (
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-200 p-5" role="status">
+                <svg className="h-5 w-5 animate-spin text-indigo-500" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                <p className="text-sm text-slate-600">Finding chapters…</p>
               </div>
-              <VoiceTestBox />
-            </>
-          )}
+            )}
 
-          {/* Stage 2: Upload progress */}
-          {isUploading && (
-            <UploadProgress percent={uploadProgress} filename={job?.filename} />
-          )}
+            {isUploaded && isAnalyzed && !converting && job?.analyzedChapters && (
+              <ChapterSelector chapters={job.analyzedChapters} onConvert={(i) => { void handleConvert(i); }} />
+            )}
 
-          {/* Stage 3: Analyzing spinner */}
-          {isUploaded && (isAnalyzing || (stage === "pending" && !job?.analyzedChapters)) && (
-            <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <svg className="h-5 w-5 animate-spin text-indigo-500" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              <p className="text-sm text-slate-600">Detecting chapters…</p>
-            </div>
-          )}
-
-          {/* Stage 4: Chapter selector (after analysis, before conversion) */}
-          {isUploaded && isAnalyzed && !converting && job?.analyzedChapters && (
-            <>
-              {/* Voice + Speed (shown here too) */}
-              <div className="flex gap-4 flex-col md:flex-row">
-                <div className="flex-1">
-                  <VoiceSelector value={selectedVoice} onChange={setVoice} />
-                </div>
-                <div className="md:w-56">
-                  <SpeedSlider value={selectedSpeed} onChange={setSpeed} />
-                </div>
-              </div>
-              <VoiceTestBox />
-
-              <ChapterSelector
+            {isUploaded && isProcessing && job && (
+              <ProcessingProgress
+                stage={job.stage}
+                progress={job.progress}
+                message={job.message}
+                chunksTotal={job.chunksTotal}
+                chunksDone={job.chunksDone}
                 chapters={job.analyzedChapters}
-                onConvert={handleConvert}
+                chapterAudios={job.chapterAudios}
+                selectedChapterIndices={selectedChapterIndices}
               />
-            </>
-          )}
+            )}
+          </div>
 
-          {/* Stage 5: TTS processing + chapter tiles */}
-          {isUploaded && isProcessing && job && (
-            <ProcessingProgress
-              stage={job.stage}
-              progress={job.progress}
-              message={job.message}
-              chunksTotal={job.chunksTotal}
-              chunksDone={job.chunksDone}
-              chapters={job.analyzedChapters}
-              chapterAudios={job.chapterAudios}
-              selectedChapterIndices={selectedChapterIndices}
-            />
-          )}
-
-          {/* Info card (idle state only) */}
-          {!isUploading && !isUploaded && (
-            <div className="rounded-xl bg-indigo-50 p-4">
-              <h3 className="mb-2 text-sm font-semibold text-indigo-800">How it works</h3>
-              <ol className="space-y-1.5 text-sm text-indigo-700">
-                <li>1. Upload your PDF textbook (up to 50 MB)</li>
-                <li>2. Choose which chapters to convert</li>
-                <li>3. Pick a voice and reading speed</li>
-                <li>4. Listen while chapters are still processing</li>
-              </ol>
-            </div>
-          )}
+          <aside className="lg:sticky lg:top-6">{settings}</aside>
         </div>
       </div>
     </div>

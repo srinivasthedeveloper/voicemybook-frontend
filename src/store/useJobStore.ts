@@ -41,6 +41,7 @@ export interface JobState {
   queue?: QueueItem[];
   parallel?: number;
   msPerChar?: number;
+  live?: boolean;
 }
 
 export interface SpeedRange {

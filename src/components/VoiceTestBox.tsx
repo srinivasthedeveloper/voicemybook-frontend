@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { previewVoice } from "../api/client";
 import useJobStore from "../store/useJobStore";
 import ErrorBanner from "./ErrorBanner";
+import { exclusive, release } from "../utils/exclusiveAudio";
 
 export default function VoiceTestBox() {
   const voice = useJobStore((s) => s.selectedVoice);
@@ -14,9 +15,10 @@ export default function VoiceTestBox() {
   function stop() {
     const audio = audioRef.current;
     if (audio) {
+      audioRef.current = null;
       audio.pause();
       URL.revokeObjectURL(audio.src);
-      audioRef.current = null;
+      release(audio);
     }
     setStatus("idle");
   }
@@ -29,9 +31,10 @@ export default function VoiceTestBox() {
     setStatus("loading");
     try {
       const blob = await previewVoice(voice, speed, text);
-      const audio = new Audio(URL.createObjectURL(blob));
+      const audio = exclusive(new Audio(URL.createObjectURL(blob)));
       audioRef.current = audio;
       audio.onended = stop;
+      audio.onpause = () => { if (audioRef.current === audio) stop(); };
       await audio.play();
       setStatus("playing");
     } catch (e: unknown) {
@@ -41,7 +44,7 @@ export default function VoiceTestBox() {
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="flex flex-col gap-2 border-t border-slate-200 pt-4">
       <label className="text-sm font-medium text-slate-700">Test voice</label>
       <textarea
         value={text}

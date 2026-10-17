@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
+import { exclusive, release } from "../utils/exclusiveAudio";
 
 interface Props {
   audioUrl: string;
@@ -61,6 +62,14 @@ export default function AudioPlayer({
     setPlaybackRate(speed);
   }, [speed, setPlaybackRate]);
 
+  // Previews and the chapter player never play over each other
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    exclusive(audio);
+    return () => release(audio);
+  }, [audioRef]);
+
   // Reload audio element when URL changes (chapter switch)
   useEffect(() => {
     const audio = audioRef.current;
@@ -98,7 +107,7 @@ export default function AudioPlayer({
   }, [playToken, audioRef, setIsPlaying]);
 
   return (
-    <div className="w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-md">
+    <div className="w-full rounded-2xl border border-slate-200 p-4 sm:p-5">
       {/* Hidden audio element */}
       <audio
         ref={audioRef}
@@ -108,11 +117,13 @@ export default function AudioPlayer({
         onWaiting={handleWaiting}
         onCanPlay={handleCanPlay}
         onEnded={() => { continueRef.current = true; setIsPlaying(false); onEnded?.(); }}
+        onPlay={() => setIsPlaying(true)}
+        onPause={(e) => { if (!e.currentTarget.ended) setIsPlaying(false); }}
         crossOrigin="anonymous"
       />
 
       {/* Track info */}
-      <div className="mb-5 flex items-center gap-3">
+      <div className="mb-4 flex items-center gap-3">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-100">
           <svg
             className="h-6 w-6 text-indigo-600"
@@ -129,7 +140,7 @@ export default function AudioPlayer({
           </svg>
         </div>
         <div className="min-w-0">
-          <p className="truncate font-semibold text-slate-800">
+          <p className="truncate font-read text-lg font-semibold text-slate-900">
             {filename?.replace(/\.pdf$/i, "") || "Audiobook"}
           </p>
           <p className="text-xs text-slate-400">
@@ -163,7 +174,7 @@ export default function AudioPlayer({
       </div>
 
       {/* Controls */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Play/Pause */}
         <button
           onClick={togglePlay}
@@ -208,14 +219,14 @@ export default function AudioPlayer({
         </button>
 
         {/* Speed selector */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500">Speed</span>
-          <div className="flex gap-1">
+        <div className="order-3 flex w-full min-w-0 items-center gap-2 sm:order-none sm:w-auto">
+          <span className="shrink-0 text-xs text-slate-500">Playback</span>
+          <div className="flex gap-1 overflow-x-auto [scrollbar-width:none]">
             {SPEEDS.map((s) => (
               <button
                 key={s}
                 onClick={() => onSpeedChange(s)}
-                className={`rounded-md px-2 py-1 text-xs font-medium transition
+                className={`min-h-8 shrink-0 rounded-md px-2 text-xs font-medium transition
                   ${
                     speed === s
                       ? "bg-indigo-600 text-white"

@@ -3,7 +3,12 @@ import useJobStore from "../store/useJobStore";
 import type { GenEvent } from "../store/useJobStore";
 import type { GeneratorState } from "../api/client";
 
-const GEN_STAGES = new Set(["chunk_ready", "chapter_state", "chapter_ready", "generator_state"]);
+const GEN_STAGES = new Set([
+  "chunk_ready",
+  "chapter_state",
+  "chapter_ready",
+  "generator_state",
+]);
 
 export function useSSE(jobId: string | null) {
   const updateJob = useJobStore((s) => s.updateJob);
@@ -14,113 +19,157 @@ export function useSSE(jobId: string | null) {
   useEffect(() => {
     if (!jobId) return;
 
-    const base = (import.meta.env.VITE_API_BASE_URL || "/api").replace(/\/$/, "");
-    const es = new EventSource(`${base}/progress/${jobId}`);
-    esRef.current = es;
+    const base = (import.meta.env.VITE_API_BASE_URL || "/api").replace(
+      /\/$/,
+      "",
+    );
+    let stopped = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    // A proxy can leave a dead stream open without any error; once the server has sent a ping,
+    // silence for longer than this means the connection is gone
+    const STALE_MS = 25000;
+    let lastSeen = 0;
+    let pinged = false;
 
-    es.addEventListener("status", (e: MessageEvent) => {
-      try {
-        const data = JSON.parse(e.data);
+    // The browser gives up for good when a reconnect hits an error page (e.g. server restarting
+    // behind the dev proxy), so reconnect ourselves; each new stream starts with a fresh snapshot
+    const connect = () => {
+      const es = new EventSource(`${base}/progress/${jobId}`);
+      esRef.current = es;
+      es.onopen = () => {
+        lastSeen = Date.now();
+        updateJob(jobId, { live: true });
+      };
+      es.addEventListener("ping", () => {
+        lastSeen = Date.now();
+        pinged = true;
+      });
 
-        if (GEN_STAGES.has(data.stage)) {
-          applyGenEvent(jobId, data as GenEvent);
-          return;
-        }
-        if (data.generator) setGenState(jobId, data.generator as GeneratorState);
+      es.addEventListener("status", (e: MessageEvent) => {
+        lastSeen = Date.now();
+        try {
+          const data = JSON.parse(e.data);
 
-        if (data.stage === "analyzing") {
-          updateJob(jobId, {
-            stage: data.stage,
-            status: data.status || data.stage,
-            progress: data.progress ?? 0,
-            message: data.message || "",
-          });
-        } else if (data.stage === "analyzed") {
-          updateJob(jobId, {
-            stage: data.stage,
-            status: data.status || data.stage,
-            progress: data.progress ?? 5,
-            message: data.message || "",
-            analyzedChapters: data.chapters || null,
-            pageCount: data.pageCount ?? null,
-          });
-        } else if (data.stage === "tts" || data.stage === "extracting") {
-          const patch: Partial<import("../store/useJobStore").JobState> = {
-            stage: data.stage,
-            status: data.status || data.stage,
-            progress: data.progress ?? 0,
-            message: data.message || "",
-            chunksTotal: data.chunksTotal ?? 0,
-            chunksDone: data.chunksDone ?? 0,
-          };
-          // Initial snapshot may include already-ready chapters
-          if (data.chapterAudios) {
-            const audios: Record<number, string> = {};
-            Object.entries(data.chapterAudios).forEach(([k, v]) => { audios[Number(k)] = v as string; });
-            patch.chapterAudios = audios;
+          if (GEN_STAGES.has(data.stage)) {
+            applyGenEvent(jobId, data as GenEvent);
+            return;
           }
-          if (data.transcript) patch.transcript = data.transcript;
-          updateJob(jobId, patch);
-        } else if (data.stage === "complete") {
-          const existingAudios = useJobStore.getState().jobs[jobId]?.chapterAudios || {};
-          updateJob(jobId, {
-            stage: data.stage,
-            status: "complete",
-            progress: 100,
-            message: data.message || "All chapters ready!",
-            chapterAudios: data.chapterAudios
-              ? { ...existingAudios, ...data.chapterAudios }
-              : existingAudios,
-          });
-        } else if (data.stage === "error") {
-          updateJob(jobId, {
-            stage: data.stage,
-            status: "error",
-            error: data.message || data.errorMessage || "Unknown error",
-          });
-          es.close();
-        } else {
-          // Fallback / initial snapshot: generic update
-          const patch: Partial<import("../store/useJobStore").JobState> = {
-            stage: data.stage,
-            status: data.status || data.stage,
-            progress: data.progress ?? 0,
-            message: data.message || "",
-            chunksTotal: data.chunksTotal ?? 0,
-            chunksDone: data.chunksDone ?? 0,
-            audioUrl: data.audioUrl || null,
-            error: data.error || null,
-          };
-          if (data.chapters) patch.analyzedChapters = data.chapters;
-          if (data.chapterAudios) {
-            // Convert string keys to numbers
-            const audios: Record<number, string> = {};
-            Object.entries(data.chapterAudios).forEach(([k, v]) => {
-              audios[Number(k)] = v as string;
+          if (data.generator)
+            setGenState(jobId, data.generator as GeneratorState);
+
+          if (data.stage === "analyzing") {
+            updateJob(jobId, {
+              stage: data.stage,
+              status: data.status || data.stage,
+              progress: data.progress ?? 0,
+              message: data.message || "",
             });
-            patch.chapterAudios = audios;
+          } else if (data.stage === "analyzed") {
+            updateJob(jobId, {
+              stage: data.stage,
+              status: data.status || data.stage,
+              progress: data.progress ?? 5,
+              message: data.message || "",
+              analyzedChapters: data.chapters || null,
+              pageCount: data.pageCount ?? null,
+            });
+          } else if (data.stage === "tts" || data.stage === "extracting") {
+            const patch: Partial<import("../store/useJobStore").JobState> = {
+              stage: data.stage,
+              status: data.status || data.stage,
+              progress: data.progress ?? 0,
+              message: data.message || "",
+              chunksTotal: data.chunksTotal ?? 0,
+              chunksDone: data.chunksDone ?? 0,
+            };
+            // Initial snapshot may include already-ready chapters
+            if (data.chapterAudios) {
+              const audios: Record<number, string> = {};
+              Object.entries(data.chapterAudios).forEach(([k, v]) => {
+                audios[Number(k)] = v as string;
+              });
+              patch.chapterAudios = audios;
+            }
+            if (data.transcript) patch.transcript = data.transcript;
+            updateJob(jobId, patch);
+          } else if (data.stage === "complete") {
+            const existingAudios =
+              useJobStore.getState().jobs[jobId]?.chapterAudios || {};
+            updateJob(jobId, {
+              stage: data.stage,
+              status: "complete",
+              progress: 100,
+              message: data.message || "All chapters ready!",
+              chapterAudios: data.chapterAudios
+                ? { ...existingAudios, ...data.chapterAudios }
+                : existingAudios,
+            });
+          } else if (data.stage === "error") {
+            updateJob(jobId, {
+              stage: data.stage,
+              status: "error",
+              error: data.message || data.errorMessage || "Unknown error",
+            });
+            es.close();
+          } else {
+            // Fallback / initial snapshot: generic update
+            const patch: Partial<import("../store/useJobStore").JobState> = {
+              stage: data.stage,
+              status: data.status || data.stage,
+              progress: data.progress ?? 0,
+              message: data.message || "",
+              chunksTotal: data.chunksTotal ?? 0,
+              chunksDone: data.chunksDone ?? 0,
+              audioUrl: data.audioUrl || null,
+              error: data.error || null,
+            };
+            if (data.chapters) patch.analyzedChapters = data.chapters;
+            if (data.chapterAudios) {
+              // Convert string keys to numbers
+              const audios: Record<number, string> = {};
+              Object.entries(data.chapterAudios).forEach(([k, v]) => {
+                audios[Number(k)] = v as string;
+              });
+              patch.chapterAudios = audios;
+            }
+            if (data.transcript) patch.transcript = data.transcript;
+
+            updateJob(jobId, patch);
+
+            if (data.stage === "error") es.close();
           }
-          if (data.transcript) patch.transcript = data.transcript;
-
-          updateJob(jobId, patch);
-
-          if (data.stage === "error") es.close();
+        } catch {
+          // ignore parse errors
         }
-      } catch {
-        // ignore parse errors
-      }
-    });
+      });
 
-    es.addEventListener("close", () => {
-      es.close();
-    });
+      es.addEventListener("close", () => {
+        es.close();
+      });
 
-    es.onerror = () => {
-      // EventSource auto-reconnects on network errors
+      es.onerror = () => {
+        updateJob(jobId, { live: false });
+        if (es.readyState === EventSource.CLOSED && !stopped) {
+          clearTimeout(retry);
+          retry = setTimeout(connect, 2000);
+        }
+      };
     };
 
-    return () => {
+    connect();
+    const watchdog = setInterval(() => {
+      const es = esRef.current;
+      if (!es || !pinged || Date.now() - lastSeen < STALE_MS) return;
       es.close();
+      pinged = false;
+      updateJob(jobId, { live: false });
+      connect();
+    }, 5000);
+    return () => {
+      stopped = true;
+      clearInterval(watchdog);
+      clearTimeout(retry);
+      esRef.current?.close();
       esRef.current = null;
     };
   }, [jobId]); // eslint-disable-line react-hooks/exhaustive-deps

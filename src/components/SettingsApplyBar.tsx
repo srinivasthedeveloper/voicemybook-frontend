@@ -7,19 +7,19 @@ interface Props {
 
 export default function SettingsApplyBar({ onStartOver, onResume, onCancel, busy }: Props) {
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-      <span className="text-sm text-amber-800">Generation paused — settings changed.</span>
+    <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-warn bg-warn-bg p-3">
+      <span className="text-sm text-slate-900">Generation paused while you change settings.</span>
       <button
         onClick={onStartOver}
         disabled={busy}
-        className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:opacity-50"
+        className="min-h-10 rounded-lg bg-indigo-600 px-3 text-sm font-medium text-bg transition hover:opacity-90 disabled:opacity-50"
       >
         Apply &amp; start over
       </button>
       <button
         onClick={onResume}
         disabled={busy}
-        className="rounded-lg border border-indigo-300 px-3 py-1.5 text-sm font-medium text-indigo-700 transition hover:bg-indigo-50 disabled:opacity-50"
+        className="min-h-10 rounded-lg border border-indigo-300 px-3 text-sm font-medium text-indigo-700 transition hover:bg-indigo-50 disabled:opacity-50"
       >
         Apply &amp; resume
       </button>
