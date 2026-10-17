@@ -7,6 +7,12 @@ interface Props {
   speed: number;
   onSpeedChange: (s: number) => void;
   onEnded?: () => void;
+  autoPlayOnSrcChange?: boolean;
+  waiting?: boolean;
+  playToken?: number;
+  seekRequest?: { sec: number; play: boolean; n: number } | null;
+  onTime?: (sec: number) => void;
+  onPlayingChange?: (playing: boolean) => void;
 }
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
@@ -24,6 +30,12 @@ export default function AudioPlayer({
   speed,
   onSpeedChange,
   onEnded,
+  autoPlayOnSrcChange,
+  waiting,
+  playToken,
+  seekRequest,
+  onTime,
+  onPlayingChange,
 }: Props) {
   const {
     audioRef,
@@ -42,6 +54,8 @@ export default function AudioPlayer({
   } = useAudioPlayer();
 
   const prevUrlRef = useRef<string>("");
+  // Set when a clip ends mid-playback so the next chunk keeps playing
+  const continueRef = useRef(false);
 
   useEffect(() => {
     setPlaybackRate(speed);
@@ -52,11 +66,36 @@ export default function AudioPlayer({
     const audio = audioRef.current;
     if (!audio || audioUrl === prevUrlRef.current) return;
     prevUrlRef.current = audioUrl;
-    const wasPlaying = !audio.paused;
+    const wasPlaying = !audio.paused || (autoPlayOnSrcChange && continueRef.current);
+    continueRef.current = false;
     audio.src = audioUrl;
     audio.load();
-    if (wasPlaying) audio.play().catch(() => {});
-  }, [audioUrl, audioRef]);
+    if (wasPlaying) {
+      audio.play().then(() => setIsPlaying(true)).catch(() => {});
+    }
+  }, [audioUrl, audioRef, autoPlayOnSrcChange, setIsPlaying]);
+
+  // Seek (transcript line click, switch to the merged file); waits for metadata when a new src is loading
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !seekRequest) return;
+    const go = () => {
+      audio.currentTime = seekRequest.sec;
+      if (seekRequest.play) audio.play().then(() => setIsPlaying(true)).catch(() => {});
+    };
+    if (audio.readyState >= 1) go();
+    else audio.addEventListener("loadedmetadata", go, { once: true });
+  }, [seekRequest, audioRef, setIsPlaying]);
+
+  useEffect(() => {
+    onPlayingChange?.(isPlaying);
+  }, [isPlaying, onPlayingChange]);
+
+  // An explicit Play request (chapter list) starts playback even if the player was paused
+  useEffect(() => {
+    if (!playToken) return;
+    audioRef.current?.play().then(() => setIsPlaying(true)).catch(() => {});
+  }, [playToken, audioRef, setIsPlaying]);
 
   return (
     <div className="w-full rounded-2xl border border-slate-200 bg-white p-6 shadow-md">
@@ -64,11 +103,11 @@ export default function AudioPlayer({
       <audio
         ref={audioRef}
         src={audioUrl}
-        onTimeUpdate={handleTimeUpdate}
+        onTimeUpdate={() => { handleTimeUpdate(); if (audioRef.current) onTime?.(audioRef.current.currentTime); }}
         onLoadedMetadata={handleLoadedMetadata}
         onWaiting={handleWaiting}
         onCanPlay={handleCanPlay}
-        onEnded={() => { setIsPlaying(false); onEnded?.(); }}
+        onEnded={() => { continueRef.current = true; setIsPlaying(false); onEnded?.(); }}
         crossOrigin="anonymous"
       />
 
@@ -94,7 +133,7 @@ export default function AudioPlayer({
             {filename?.replace(/\.pdf$/i, "") || "Audiobook"}
           </p>
           <p className="text-xs text-slate-400">
-            {formatTime(currentTime)} / {formatTime(duration)}
+            {waiting ? "Generating next part…" : `${formatTime(currentTime)} / ${formatTime(duration)}`}
           </p>
         </div>
       </div>

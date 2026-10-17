@@ -1,15 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DropZone } from "../components/DropZone";
 import UploadProgress from "../components/UploadProgress";
 import ProcessingProgress from "../components/ProcessingProgress";
 import VoiceSelector from "../components/VoiceSelector";
+import SpeedSlider from "../components/SpeedSlider";
+import VoiceTestBox from "../components/VoiceTestBox";
 import ChapterSelector from "../components/ChapterSelector";
 import ErrorBanner from "../components/ErrorBanner";
 import { useUpload } from "../hooks/useUpload";
 import { useSSE } from "../hooks/useSSE";
 import useJobStore from "../store/useJobStore";
-import { startConversion } from "../api/client";
+import { getGeneratorState, startChapters } from "../api/client";
 import logo from "/public/logo.png";
 
 export default function HomePage() {
@@ -33,14 +35,6 @@ export default function HomePage() {
 
   const job = currentJob();
 
-  // Navigate to player as soon as the first chapter_ready fires
-  useEffect(() => {
-    if (!job || !activeJobId) return;
-    if (job.stage === "chapter_ready" || (job.stage === "complete" && Object.keys(job.chapterAudios || {}).length > 0)) {
-      navigate(`/player/${activeJobId}`);
-    }
-  }, [job?.stage, activeJobId, navigate]);
-
   async function handleFile(file: File) {
     const jobId = await upload(file);
     if (jobId) setActiveJobId(jobId);
@@ -51,7 +45,11 @@ export default function HomePage() {
     setConverting(true);
     setSelectedChapterIndices(indices);
     try {
-      await startConversion(activeJobId, selectedVoice, selectedSpeed, indices);
+      // Cached book: chapters that already have audio open as-is (regenerate from the player)
+      const { chapters } = await getGeneratorState(activeJobId);
+      const todo = indices.filter((i) => !chapters.some((c) => c.chapterIndex === i && c.hasAudio));
+      if (todo.length) await startChapters(activeJobId, todo, selectedVoice, selectedSpeed);
+      void navigate(`/player/${activeJobId}`);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to start conversion";
       setError(msg);
@@ -114,22 +112,11 @@ export default function HomePage() {
                 <div className="flex-1">
                   <VoiceSelector value={selectedVoice} onChange={setVoice} disabled={isUploading} />
                 </div>
-                <div className="flex flex-row gap-1.5 justify-center items-center md:flex-col md:justify-start">
-                  <label className="text-sm font-medium text-slate-700">Speed</label>
-                  <select
-                    value={selectedSpeed}
-                    onChange={(e) => setSpeed(Number(e.target.value))}
-                    disabled={isUploading}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm
-                               text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none
-                               focus:ring-2 focus:ring-indigo-200 disabled:opacity-50"
-                  >
-                    {[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((s) => (
-                      <option key={s} value={s}>{s}x</option>
-                    ))}
-                  </select>
+                <div className="md:w-56">
+                  <SpeedSlider value={selectedSpeed} onChange={setSpeed} disabled={isUploading} />
                 </div>
               </div>
+              <VoiceTestBox />
             </>
           )}
 
@@ -157,21 +144,11 @@ export default function HomePage() {
                 <div className="flex-1">
                   <VoiceSelector value={selectedVoice} onChange={setVoice} />
                 </div>
-                <div className="flex flex-row gap-1.5 justify-center items-center md:flex-col md:justify-start">
-                  <label className="text-sm font-medium text-slate-700">Speed</label>
-                  <select
-                    value={selectedSpeed}
-                    onChange={(e) => setSpeed(Number(e.target.value))}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm
-                               text-slate-800 shadow-sm focus:border-indigo-500 focus:outline-none
-                               focus:ring-2 focus:ring-indigo-200"
-                  >
-                    {[0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map((s) => (
-                      <option key={s} value={s}>{s}x</option>
-                    ))}
-                  </select>
+                <div className="md:w-56">
+                  <SpeedSlider value={selectedSpeed} onChange={setSpeed} />
                 </div>
               </div>
+              <VoiceTestBox />
 
               <ChapterSelector
                 chapters={job.analyzedChapters}

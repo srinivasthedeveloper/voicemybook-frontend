@@ -8,31 +8,51 @@ interface Props {
   onSeek: (startSec: number) => void;
 }
 
+interface Line {
+  text: string;
+  startSec: number;
+}
+
+const SENTENCE = /[^.!?]+(?:[.!?]+["'”’)\]]*|$)\s*/g;
+
+// Sentence start times are estimated by character position inside the chunk's measured duration
+function splitLines(chunk: TranscriptChunk): Line[] {
+  const parts = chunk.text.match(SENTENCE)?.filter((p) => p.trim()) ?? [chunk.text];
+  const total = parts.reduce((n, p) => n + p.length, 0) || 1;
+  const span = chunk.endSec - chunk.startSec;
+  let before = 0;
+  return parts.map((p) => {
+    const line = { text: p.replace(/\s+/g, " ").trim(), startSec: chunk.startSec + (before / total) * span };
+    before += p.length;
+    return line;
+  });
+}
+
 export default function TranscriptViewer({
   transcript,
   currentTime,
   activeChapterIndex,
   onSeek,
 }: Props) {
-  // Filter to current chapter's chunks
-  const chunks = transcript.filter((c) => c.chapterIndex === activeChapterIndex);
+  const paragraphs = transcript
+    .filter((c) => c.chapterIndex === activeChapterIndex)
+    .map(splitLines);
 
-  // Find active chunk (last one where startSec <= currentTime)
-  let activeIdx = -1;
-  for (let i = 0; i < chunks.length; i++) {
-    if (chunks[i].startSec <= currentTime) activeIdx = i;
-    else break;
+  // Active line = last line whose start is at or before the playhead
+  let active = "";
+  for (const [pi, lines] of paragraphs.entries()) {
+    for (const [li, line] of lines.entries()) {
+      if (line.startSec <= currentTime) active = `${pi}:${li}`;
+    }
   }
 
-  const activeRef = useRef<HTMLButtonElement | null>(null);
+  const activeRef = useRef<HTMLSpanElement | null>(null);
 
   useEffect(() => {
-    if (activeRef.current) {
-      activeRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
-  }, [activeIdx]);
+    activeRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [active]);
 
-  if (chunks.length === 0) return null;
+  if (paragraphs.length === 0) return null;
 
   return (
     <div className="w-full rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -41,20 +61,27 @@ export default function TranscriptViewer({
           Transcript
         </h3>
       </div>
-      <div className="max-h-64 overflow-y-auto px-2 py-2">
-        {chunks.map((chunk, i) => (
-          <button
-            key={i}
-            ref={i === activeIdx ? activeRef : null}
-            onClick={() => onSeek(chunk.startSec)}
-            className={`block w-full rounded-lg px-3 py-2 text-left text-sm leading-relaxed transition
-              ${i === activeIdx
-                ? "bg-indigo-100 font-medium text-indigo-900"
-                : "text-slate-700 hover:bg-slate-50"
-              }`}
-          >
-            {chunk.text}
-          </button>
+      <div className="max-h-64 overflow-y-auto px-4 py-3">
+        {paragraphs.map((lines, pi) => (
+          <p key={pi} className="mb-3 text-sm leading-relaxed text-slate-700">
+            {lines.map((line, li) => {
+              const key = `${pi}:${li}`;
+              return (
+                <span
+                  key={key}
+                  ref={key === active ? activeRef : null}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onSeek(line.startSec)}
+                  onKeyDown={(e) => { if (e.key === "Enter") onSeek(line.startSec); }}
+                  className={`cursor-pointer rounded px-0.5 transition
+                    ${key === active ? "bg-indigo-100 font-medium text-indigo-900" : "hover:bg-slate-100"}`}
+                >
+                  {line.text}{" "}
+                </span>
+              );
+            })}
+          </p>
         ))}
       </div>
     </div>

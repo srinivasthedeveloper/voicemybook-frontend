@@ -1,9 +1,14 @@
 import { useEffect, useRef } from "react";
 import useJobStore from "../store/useJobStore";
-import type { TranscriptChunk } from "../store/useJobStore";
+import type { GenEvent } from "../store/useJobStore";
+import type { GeneratorState } from "../api/client";
+
+const GEN_STAGES = new Set(["chunk_ready", "chapter_state", "chapter_ready", "generator_state"]);
 
 export function useSSE(jobId: string | null) {
   const updateJob = useJobStore((s) => s.updateJob);
+  const applyGenEvent = useJobStore((s) => s.applyGenEvent);
+  const setGenState = useJobStore((s) => s.setGenState);
   const esRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
@@ -16,6 +21,12 @@ export function useSSE(jobId: string | null) {
     es.addEventListener("status", (e: MessageEvent) => {
       try {
         const data = JSON.parse(e.data);
+
+        if (GEN_STAGES.has(data.stage)) {
+          applyGenEvent(jobId, data as GenEvent);
+          return;
+        }
+        if (data.generator) setGenState(jobId, data.generator as GeneratorState);
 
         if (data.stage === "analyzing") {
           updateJob(jobId, {
@@ -50,33 +61,6 @@ export function useSSE(jobId: string | null) {
           }
           if (data.transcript) patch.transcript = data.transcript;
           updateJob(jobId, patch);
-        } else if (data.stage === "chapter_ready") {
-          // Merge new chapter audio + transcript into existing state
-          // Use getState() to avoid stale closure over `jobs`
-          const currentJob = useJobStore.getState().jobs[jobId];
-          const existingAudios = currentJob?.chapterAudios || {};
-          const existingTranscript: TranscriptChunk[] = currentJob?.transcript || [];
-          const newTranscript: TranscriptChunk[] = data.transcript || [];
-
-          // If data.chapterAudios is present (initial snapshot), use full map
-          const mergedAudios = data.chapterAudios
-            ? (() => {
-                const a: Record<number, string> = { ...existingAudios };
-                Object.entries(data.chapterAudios).forEach(([k, v]) => { a[Number(k)] = v as string; });
-                return a;
-              })()
-            : { ...existingAudios, [data.chapterIndex]: data.audioUrl };
-
-          updateJob(jobId, {
-            stage: data.stage,
-            status: data.status || "tts",
-            chapterAudios: mergedAudios,
-            transcript: data.chapterAudios
-              ? (data.transcript || existingTranscript)  // full transcript from snapshot
-              : [...existingTranscript, ...newTranscript],
-            // Set first ready chapter as audioUrl for backward compat
-            audioUrl: currentJob?.audioUrl || data.audioUrl || null,
-          });
         } else if (data.stage === "complete") {
           const existingAudios = useJobStore.getState().jobs[jobId]?.chapterAudios || {};
           updateJob(jobId, {
@@ -88,7 +72,6 @@ export function useSSE(jobId: string | null) {
               ? { ...existingAudios, ...data.chapterAudios }
               : existingAudios,
           });
-          es.close();
         } else if (data.stage === "error") {
           updateJob(jobId, {
             stage: data.stage,
@@ -121,9 +104,7 @@ export function useSSE(jobId: string | null) {
 
           updateJob(jobId, patch);
 
-          if (data.stage === "complete" || data.stage === "error") {
-            es.close();
-          }
+          if (data.stage === "error") es.close();
         }
       } catch {
         // ignore parse errors

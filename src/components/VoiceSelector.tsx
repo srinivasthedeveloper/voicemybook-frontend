@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { getVoices, voicePreviewUrl, type Voice } from "../api/client";
+import useJobStore from "../store/useJobStore";
 
 interface Props {
   value: string;
   onChange: (voice: string) => void;
   disabled?: boolean;
+  previewSpeed?: number;
 }
 
 const FALLBACK_VOICES: Voice[] = [
@@ -16,15 +18,23 @@ const FALLBACK_VOICES: Voice[] = [
   { id: "am_puck", label: "Puck", description: "US Male" },
   { id: "bf_emma", label: "Emma", description: "British Female" },
   { id: "bm_george", label: "George", description: "British Male" },
+  { id: "bm_lewis", label: "Lewis", description: "British Male" },
+  { id: "bf_isabella", label: "Isabella", description: "British Female" },
+  { id: "af_sarah", label: "Sarah", description: "US Female" },
+  { id: "af_sky", label: "Sky", description: "US Female" },
+  { id: "am_adam", label: "Adam", description: "US Male" },
+  { id: "bm_fable", label: "Fable", description: "British Male" },
 ] as (Voice & { description: string })[];
 
 type VoiceWithDesc = Voice & { description?: string };
 
-export default function VoiceSelector({ value, onChange, disabled }: Props) {
+export default function VoiceSelector({ value, onChange, disabled, previewSpeed }: Props) {
   const [voices, setVoices] = useState<VoiceWithDesc[]>(FALLBACK_VOICES);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const storeSpeed = useJobStore((s) => s.selectedSpeed);
+  const speed = previewSpeed ?? storeSpeed;
 
   useEffect(() => {
     getVoices()
@@ -58,7 +68,7 @@ export default function VoiceSelector({ value, onChange, disabled }: Props) {
 
     stopCurrent();
 
-    const audio = new Audio(voicePreviewUrl(voiceId));
+    const audio = new Audio(voicePreviewUrl(voiceId, speed));
     audioRef.current = audio;
     setLoadingId(voiceId);
 

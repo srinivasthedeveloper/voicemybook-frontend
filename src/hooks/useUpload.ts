@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { uploadPDF } from "../api/client";
+import { lookupUpload, uploadPDF } from "../api/client";
 import useJobStore from "../store/useJobStore";
 
 export function useUpload() {
@@ -13,14 +13,21 @@ export function useUpload() {
     setUploadProgress(0);
 
     try {
-      const uploadRes = await uploadPDF(file, (pct) => setUploadProgress(pct));
+      // crypto.subtle only exists on secure origins (e.g. not http://<LAN IP>); server dedupes anyway
+      let cached = null;
+      if (globalThis.crypto?.subtle) {
+        const digest = await crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+        const sha256 = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+        cached = await lookupUpload(sha256);
+      }
+      const uploadRes = cached ?? (await uploadPDF(file, (pct) => setUploadProgress(pct)));
 
       setJob(uploadRes.jobId, {
         jobId: uploadRes.jobId,
         status: "pending",
         stage: "pending",
         progress: 0,
-        message: "Uploaded successfully",
+        message: cached ? "Loaded from cache" : "Uploaded successfully",
         chunksTotal: 0,
         chunksDone: 0,
         audioUrl: null,

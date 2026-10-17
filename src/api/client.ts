@@ -9,14 +9,46 @@ export interface UploadResponse {
   filename: string;
   sizeBytes: number;
   pageCount: number | null;
+  cached?: boolean;
 }
 
-export interface ConvertResponse {
-  jobId: string;
-  status: string;
+export interface ChunkInfo {
+  chunkIndex: number;
+  url: string;
+  text: string;
+  durationSec: number;
   voice: string;
   speed: number;
 }
+
+export type ChapterGenState = "not_started" | "queued" | "generating" | "paused" | "ready" | "stopped";
+
+export interface ChapterGen {
+  chapterIndex: number;
+  state: ChapterGenState;
+  runId: number;
+  hasAudio: boolean;
+  totalChunks?: number | null;
+  etaSec?: number | null;
+  chunks: ChunkInfo[];
+  error?: string;
+}
+
+export interface QueueItem {
+  jobId: string;
+  chapterIndex: number;
+}
+
+export interface GeneratorState {
+  voice: string;
+  speed: number;
+  queue: QueueItem[];
+  parallel: number;
+  msPerChar: number;
+  chapters: ChapterGen[];
+}
+
+export type ApplyMode = "restart-chapter" | "resume";
 
 export interface Voice {
   id: string;
@@ -39,18 +71,58 @@ export async function uploadPDF(
   return data;
 }
 
-export async function startConversion(
+export async function lookupUpload(sha256: string): Promise<UploadResponse | null> {
+  try {
+    const { data } = await api.get<UploadResponse>("/upload/lookup", { params: { sha256 } });
+    return data;
+  } catch (e: unknown) {
+    if (axios.isAxiosError(e) && e.response?.status === 404) return null;
+    throw e;
+  }
+}
+
+export async function getGeneratorState(jobId: string): Promise<GeneratorState> {
+  const { data } = await api.get<GeneratorState>(`/generate/${jobId}`);
+  return data;
+}
+
+export async function startChapters(jobId: string, chapters: number[], voice?: string, speed?: number) {
+  await api.post(`/generate/${jobId}/start`, { chapters, voice, speed });
+}
+
+export async function pauseJob(jobId: string) {
+  await api.post(`/generate/${jobId}/pause`);
+}
+
+export async function resumeJob(jobId: string) {
+  await api.post(`/generate/${jobId}/resume`);
+}
+
+export async function stopJob(jobId: string) {
+  await api.post(`/generate/${jobId}/stop`);
+}
+
+export async function stopAll() {
+  await api.post("/generate/stop-all");
+}
+
+export async function pauseChapter(jobId: string, chapterIndex: number) {
+  await api.post(`/generate/${jobId}/chapters/${chapterIndex}/pause`);
+}
+
+export async function stopChapter(jobId: string, chapterIndex: number) {
+  await api.post(`/generate/${jobId}/chapters/${chapterIndex}/stop`);
+}
+
+export async function applySettings(
   jobId: string,
-  voice: string,
-  speed: number,
-  selectedChapterIndices?: number[],
-): Promise<ConvertResponse> {
-  const { data } = await api.post<ConvertResponse>("/convert", {
-    jobId,
-    voice,
-    speed,
-    selectedChapterIndices,
-  });
+  settings: { voice: string; speed: number; mode: ApplyMode; chapterIndex?: number },
+) {
+  await api.post(`/generate/${jobId}/settings`, settings);
+}
+
+export async function previewVoice(voice: string, speed: number, text: string): Promise<Blob> {
+  const { data } = await api.post<Blob>("/voices/preview", { voice, speed, text }, { responseType: "blob" });
   return data;
 }
 
@@ -64,8 +136,18 @@ export async function getVoices(): Promise<Voice[]> {
   return data.voices;
 }
 
-export function voicePreviewUrl(voiceId: string) {
-  return `${BASE}/voices/preview?voice=${encodeURIComponent(voiceId)}`;
+export function voicePreviewUrl(voiceId: string, speed?: number) {
+  const q = speed == null ? "" : `&speed=${speed.toFixed(2)}`;
+  return `${BASE}/voices/preview?voice=${encodeURIComponent(voiceId)}${q}`;
+}
+
+// Server-relative chunk/chapter URLs ("/api/...") resolved against the API base
+export function resolveApiUrl(url: string) {
+  return url.startsWith("/api/") ? `${BASE}${url.slice(4)}` : url;
+}
+
+export function zipUrl(jobId: string) {
+  return `${BASE}/audio/${jobId}/zip`;
 }
 
 export function audioUrl(jobId: string) {
