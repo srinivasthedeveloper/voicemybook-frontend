@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { rememberBook } from "../utils/myBooks";
 import AudioPlayer from "../components/AudioPlayer";
 import TranscriptViewer from "../components/TranscriptViewer";
 import ErrorBanner from "../components/ErrorBanner";
@@ -35,6 +36,7 @@ type Tab = "chapters" | "read" | "voice";
 
 export default function PlayerPage() {
   const { id } = useParams<{ id: string }>();
+  useEffect(() => { if (id) rememberBook(id); }, [id]);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const {

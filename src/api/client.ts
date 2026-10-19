@@ -152,6 +152,14 @@ export async function getPreviewProgress(id: string): Promise<PreviewProgress> {
   return data;
 }
 
+export type BookStatus = "generating" | "stopped" | "done" | "not_started";
+export type BookSummary = { id: string; filename: string; createdAt: string; totalChapters: number; readyChapters: number; status: BookStatus };
+
+export async function getBookSummaries(ids: string[]): Promise<BookSummary[]> {
+  const { data } = await api.get<BookSummary[]>("/job/summary", { params: { ids: ids.join(",") } });
+  return data;
+}
+
 export async function getJob(jobId: string) {
   const { data } = await api.get(`/job/${jobId}`);
   return data;

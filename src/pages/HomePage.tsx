@@ -6,6 +6,7 @@ import ProcessingProgress from "../components/ProcessingProgress";
 import VoiceSelector from "../components/VoiceSelector";
 import SpeedSlider from "../components/SpeedSlider";
 import VoiceTestBox from "../components/VoiceTestBox";
+import MyBooks from "../components/MyBooks";
 import ChapterSelector from "../components/ChapterSelector";
 import ErrorBanner from "../components/ErrorBanner";
 import { useUpload } from "../hooks/useUpload";
@@ -122,6 +123,7 @@ export default function HomePage() {
                     </li>
                   ))}
                 </ol>
+                <MyBooks />
               </>
             )}
 
