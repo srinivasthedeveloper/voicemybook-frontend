@@ -52,7 +52,7 @@ export interface SpeedRange {
 // SSE payloads from the backend generator
 export type GenEvent =
   | ({ stage: "chunk_ready"; chapterIndex: number; runId: number; totalChunks?: number; etaSec?: number } & ChapterGen["chunks"][number])
-  | { stage: "chapter_state"; chapterIndex: number; state: ChapterGen["state"]; runId: number; hasAudio: boolean; totalChunks?: number; error?: string }
+  | { stage: "chapter_state"; chapterIndex: number; state: ChapterGen["state"]; runId: number; hasAudio: boolean; totalChunks?: number; error?: string; note?: string }
   | { stage: "chapter_ready"; chapterIndex: number; audioUrl: string; transcript: TranscriptChunk[] }
   | { stage: "generator_state"; queue: QueueItem[]; parallel?: number; msPerChar?: number };
 
@@ -94,6 +94,7 @@ function reduceGen(job: JobState, e: GenEvent): Partial<JobState> {
       ...base,
       totalChunks: e.totalChunks ?? base.totalChunks,
       etaSec: e.etaSec ?? base.etaSec,
+      note: undefined,
       chunks: [...base.chunks, { chunkIndex, url, text, durationSec, voice, speed }],
     };
     return { gen };
@@ -106,6 +107,7 @@ function reduceGen(job: JobState, e: GenEvent): Partial<JobState> {
       hasAudio: e.hasAudio,
       totalChunks: e.totalChunks ?? cur.totalChunks,
       error: e.error,
+      note: e.note,
       chunks: e.runId === cur.runId ? cur.chunks : [],
     };
     return { gen };

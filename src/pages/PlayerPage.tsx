@@ -21,6 +21,7 @@ import {
   pauseChapter,
   stopChapter,
   applySettings,
+  engineOf,
   zipUrl,
   type ApplyMode,
   type ChapterGen,
@@ -397,6 +398,8 @@ export default function PlayerPage() {
           {draft && (
             <SettingsApplyBar
               busy={applying}
+              resumeDisabled={engineOf(draft.voice) !== engineOf(selectedVoice)}
+              note={engineOf(draft.voice) !== engineOf(selectedVoice) ? "Switching engines restarts the chapter." : undefined}
               onStartOver={() => { void apply("restart-chapter"); }}
               onResume={() => { void apply("resume"); }}
               onCancel={cancelEdit}

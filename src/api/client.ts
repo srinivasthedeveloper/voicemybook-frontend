@@ -30,13 +30,25 @@ export interface ChapterGen {
   hasAudio: boolean;
   totalChunks?: number | null;
   etaSec?: number | null;
+  note?: string;
   chunks: ChunkInfo[];
   error?: string;
+}
+
+export type Engine = "kokoro" | "turbo" | "chatterbox";
+export type EngineStatus = "stopped" | "starting" | "ready" | "error";
+
+// Same rule as the server: the voice ID prefix picks the engine
+export function engineOf(voiceId: string): Engine {
+  if (voiceId.startsWith("turbo:")) return "turbo";
+  if (voiceId.startsWith("cb:")) return "chatterbox";
+  return "kokoro";
 }
 
 export interface QueueItem {
   jobId: string;
   chapterIndex: number;
+  engine?: Engine;
 }
 
 export interface GeneratorState {
@@ -53,6 +65,8 @@ export type ApplyMode = "restart-chapter" | "resume";
 export interface Voice {
   id: string;
   label: string;
+  description?: string;
+  engine?: Engine;
 }
 
 export async function uploadPDF(
@@ -121,8 +135,20 @@ export async function applySettings(
   await api.post(`/generate/${jobId}/settings`, settings);
 }
 
-export async function previewVoice(voice: string, speed: number, text: string): Promise<Blob> {
-  const { data } = await api.post<Blob>("/voices/preview", { voice, speed, text }, { responseType: "blob" });
+export async function previewVoice(voice: string, speed: number, text: string, signal?: AbortSignal, id?: string): Promise<Blob> {
+  const { data } = await api.post<Blob>("/voices/preview", { id, voice, speed, text }, { responseType: "blob", signal });
+  return data;
+}
+
+export type PreviewProgress = { done: number; total: number; etaSec: number | null };
+
+// The running custom preview as one MP3 that grows as parts finish; <audio> plays it while it downloads
+export function previewStreamUrl(id: string) {
+  return `${BASE}/voices/preview/stream/${id}`;
+}
+
+export async function getPreviewProgress(id: string): Promise<PreviewProgress> {
+  const { data } = await api.get<PreviewProgress>(`/voices/preview/progress/${id}`);
   return data;
 }
 
@@ -131,9 +157,9 @@ export async function getJob(jobId: string) {
   return data;
 }
 
-export async function getVoices(): Promise<Voice[]> {
-  const { data } = await api.get<{ voices: Voice[] }>("/voices");
-  return data.voices;
+export async function getVoices(): Promise<{ voices: Voice[]; engineStatus: Partial<Record<Engine, EngineStatus>> }> {
+  const { data } = await api.get<{ voices: Voice[]; engineStatus?: Partial<Record<Engine, EngineStatus>> }>("/voices");
+  return { voices: data.voices, engineStatus: data.engineStatus ?? {} };
 }
 
 export function voicePreviewUrl(voiceId: string, speed?: number) {

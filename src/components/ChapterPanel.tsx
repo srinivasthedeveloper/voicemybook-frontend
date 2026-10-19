@@ -134,6 +134,9 @@ export default function ChapterPanel({
                 <span className={`block truncate text-xs ${STATUS[c.state].tone}`} title={c.error}>
                   {statusLine(c)}
                 </span>
+                {c.state === "generating" && c.note && (
+                  <span className="block truncate text-xs text-slate-500">{c.note}</span>
+                )}
                 {c.state === "generating" && c.totalChunks ? (
                   <span className="mt-1 block h-1 overflow-hidden rounded-full bg-slate-200">
                     <span className="block h-full rounded-full bg-indigo-500 transition-all" style={{ width: `${pct}%` }} />
